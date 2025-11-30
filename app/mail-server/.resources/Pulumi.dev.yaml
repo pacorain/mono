@@ -1,0 +1,4 @@
+encryptionsalt: v1:ug1N+CcfdEc=:v1:HQwbpmpWEzcQcbmf:hbF/1mZppu6ehdfDmv2GdwHL3+o2KQ==
+config:
+  aws:region: us-east-1
+  path: dev/app/mail-server

@@ -1,0 +1,28 @@
+name: Mail Server Plan
+
+on:
+    pull_request:
+        branches:
+            - main
+
+jobs:
+    plan:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+              name: Checkout
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                python-version: 3.14
+            - name: Install Pulumi
+              run: |
+                curl -fsSL https://get.pulumi.com | sh
+            - name: Login to Pulumi
+              run: |
+                pulumi login "s3://pulumi-backend/dev/app/mail-server"
+            - name: Plan
+              run: |
+                cd app/mail-server
+                pulumi stack init mail-server-preview
+                pulumi preview
