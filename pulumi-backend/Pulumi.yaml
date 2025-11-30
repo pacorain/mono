@@ -1,0 +1,22 @@
+name: pulumi-backend
+description: S3 Backend for personal infra pulumi
+runtime: yaml
+config: 
+  'pulumi:tags': 
+    value: 
+      'pulumi:template': yaml
+  bucket:
+    type: string
+    secret: True
+variables: {}
+resources: 
+  s3-bucket-pulumi-backend:
+    type: aws:s3:Bucket
+    properties:
+      bucket: ${bucket}
+      region: us-east-1
+      tags:
+        project: pulumi-backend
+    options:
+      protect: true
+outputs: {}

@@ -1,0 +1,4 @@
+encryptionsalt: v1:wm1Q/devBhk=:v1:lTMpjr/QJfcvlX96:58pFQbV/ZjHEx/x0yC+X2fO04Bu7Ag==
+config:
+  pulumi-backend:bucket:
+    secure: v1:tkEfjhX329W1m7ey:i2WwEzbUNKYSwvMHcf5dtfMdfzlpM7vMr4upS0VyVXOt6O+HeGlToMNt9e+jzUY=
