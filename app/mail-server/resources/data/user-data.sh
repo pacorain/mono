@@ -43,6 +43,7 @@ eval $(jq -r '.docker | to_entries[] | "export \(.key)=\(.value)"' <<< "$CONFIG_
 export BIND_ADDRESS="127.0.0.1"
 
 # TODO: Write .env file
+touch /opt/mailu/mailu.env
 
 # Create docker-compose.yml from template with environment variable substitution
 cat > docker-compose.yml <<'EOF'
