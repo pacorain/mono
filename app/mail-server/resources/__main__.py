@@ -128,27 +128,32 @@ class MailServer(ComponentResource):
         )
 
         # While testing, create a spot EC2 instance
-        self.instance = aws.ec2.SpotInstanceRequest(
+        expire_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        self.instance_request = aws.ec2.SpotInstanceRequest(
             "mail_server_instance",
             aws.ec2.SpotInstanceRequestArgs(
                 ami=self.ami.id,
                 instance_type="t3.micro",
                 iam_instance_profile=self.instance_profile.name,
-                tags={
-                    "Project": "mail-server",
-                    "ExpireAt": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-                },
+                tag_specifications=[aws.ec2.SpotInstanceRequestTagSpecificationArgs(
+                    resource_type="instance",
+                    tags={
+                        "Project": "mail-server",
+                        "ExpireAt": expire_at
+                    }
+                )],
                 user_data_base64=base64.b64encode(self.user_data.encode()).decode()
             ),
-            opts=ResourceOptions(parent=self)
+            opts=ResourceOptions(parent=self),
+            wait_for_fulfillment=True
         )
 
         # Register outputs
         self.register_outputs({
             "instance_role_arn": self.instance_role.arn,
             "ssm_config_path": "/mail-server/config",
-            "instance_id": self.instance.spot_instance_id,
-            "instance_public_ip": self.instance.public_ip,
+            "instance_id": self.instance_request.spot_instance_id,
+            "instance_public_ip": self.instance_request.public_ip,
         })
 
 mail_server = MailServer("mail-server")
