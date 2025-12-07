@@ -14,8 +14,9 @@ class MailServer(ComponentResource):
         stack = pulumi.get_stack()
         infra_stack = pulumi.StackReference(f"organization/infra/{stack}")
 
+        self.domain_name = infra_stack.get_output("domain_name")
         self.key_name = infra_stack.get_output("austin_key_pair_name")
-        self.rwhq_net_zone_id = infra_stack.get_output("rwhq_net_zone_id")
+        self.zone_id = infra_stack.get_output("domain_zone_id")
 
         self.user_data = None
         self.instance_request = None
@@ -134,14 +135,14 @@ class MailServer(ComponentResource):
 
         pulumi.export("elastic_ip", self.elastic_ip.public_ip)
 
-        self.create_route53_records()
+        self.domain_name.apply(lambda domain_name: self.create_route53_records(domain_name))
 
-    def create_route53_records(self):
+    def create_route53_records(self, domain_name):
         """Create Route 53 records for the mail server"""
         aws.route53.Record(
             "mail-server-record",
-            name="mail.rwhq.net",
-            zone_id=self.rwhq_net_zone_id,
+            name=f"mail.{domain_name}",
+            zone_id=self.zone_id,
             type="A",
             ttl=300,
             records=[self.elastic_ip.public_ip],
