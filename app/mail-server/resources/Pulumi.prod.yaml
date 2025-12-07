@@ -1,3 +1,4 @@
 encryptionsalt: v1:8ZFIe8XEpKI=:v1:LLvPQWMg+keZELlW:3F/3xaKrbz+WG+aE3voMfVDQ4Z5epg==
 config:
+  aws:region: us-east-1
   path: app/mail-server

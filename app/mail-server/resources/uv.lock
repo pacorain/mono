@@ -64,7 +64,7 @@ wheels = [
 ]
 
 [[package]]
-name = "mail-server"
+name = "pacorain-mail-server"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

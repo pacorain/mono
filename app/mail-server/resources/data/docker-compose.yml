@@ -1,0 +1,12 @@
+services:
+  front:
+    image: nginxdemos/hello
+    restart: always
+    env_file: ${MAILU_DATA_DIR}/mailu.env
+    logging:
+      driver: journald
+      options:
+        tag: mailu-front
+    ports:
+      - "${BIND_ADDRESS}:80:80"
+      - "${BIND_ADDRESS}:443:443"
