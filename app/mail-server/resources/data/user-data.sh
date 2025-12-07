@@ -39,8 +39,16 @@ fi
 
 eval $(jq -r '.docker | to_entries[] | "export \(.key)=\(.value)"' <<< "$CONFIG_JSON")
 
-# TODO: Set BIND_ADDRESS to the public IP of the instance
-export BIND_ADDRESS="127.0.0.1"
+# Get the public IP address from EC2 instance metadata
+echo "Fetching public IP address from instance metadata..."
+PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+if [ -z "$PUBLIC_IP" ]; then
+    echo "Warning: Could not retrieve public IP address, falling back to 127.0.0.1"
+    export BIND_ADDRESS="127.0.0.1"
+else
+    echo "Using public IP address: $PUBLIC_IP"
+    export BIND_ADDRESS="$PUBLIC_IP"
+fi
 
 # TODO: Write .env file
 touch /opt/mailu/mailu.env
