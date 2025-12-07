@@ -7,7 +7,7 @@ if ! command -v aws &> /dev/null; then
     yum install -y aws-cli
 fi
 
-yum install -y jq docker
+yum install -y jq docker docker-compose
 
 # Configuration
 SSM_CONFIG_PARAM="/mail-server/config"
@@ -45,6 +45,6 @@ EOF
 
 # Start services with Docker Compose
 echo "Starting services with Docker Compose..."
-docker compose up -d
+docker-compose up -d
 
 echo "User-data script completed successfully"
