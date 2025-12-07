@@ -1,0 +1,14 @@
+name: infra
+description: Miscellaneous infra resources
+variables:
+  austin_ssh_key:
+    type: string
+    secret: true
+runtime:
+  name: python
+  options:
+    toolchain: uv
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: aws-python

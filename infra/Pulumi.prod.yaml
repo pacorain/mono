@@ -1,0 +1,5 @@
+encryptionsalt: v1:yrg+r0vI1Ng=:v1:0xu10VmhotZoqozO:WP7s7JAo+yDbTIVvOQLO2rmpxojicQ==
+config:
+  aws:region: us-east-1
+  infra:austin_ssh_key:
+    secure: v1:gQE7mjNAnhDHmEPn:hljll2e29VzKjl82ZVDddPIUU9gtT9XMLT6EJoe2Kc4zyPV7P3cNBTj2D28sBr+xGw0jBBxgZ1BDzytY5t6Gg9nyBE2Jrd5ooAVTsX0giBECRMzo82e734BELpidUb93

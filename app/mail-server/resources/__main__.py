@@ -12,6 +12,14 @@ class MailServer(ComponentResource):
     def __init__(self, name, opts=None):
         super().__init__("rwhq:mail-server", name, None, opts)
 
+        stack = pulumi.get_stack()
+
+        # Reference the key pair from the infra project
+        # Stack reference format for S3/local backends: "project/stack"
+        # Adjust "prod" to match your actual stack name (e.g., "dev", "prod")
+        infra_stack = pulumi.StackReference(f"organization/infra/{stack}")
+        key_name = infra_stack.get_output("austin_key_pair_name")
+
         # IAM role for EC2 instance to access SSM Parameter Store
         self.instance_role = aws.iam.Role(
             "mail-server-instance-role",
@@ -127,6 +135,41 @@ class MailServer(ComponentResource):
             opts=parameter_opts
         )
 
+        # Create security group with ports 22 (SSH) and 80 (HTTP) open
+        self.security_group = aws.ec2.SecurityGroup(
+            "mail-server-sg",
+            description="Security group for mail server instance",
+            ingress=[
+                aws.ec2.SecurityGroupIngressArgs(
+                    protocol="tcp",
+                    from_port=22,
+                    to_port=22,
+                    cidr_blocks=["0.0.0.0/0"],
+                    description="Allow SSH"
+                ),
+                aws.ec2.SecurityGroupIngressArgs(
+                    protocol="tcp",
+                    from_port=80,
+                    to_port=80,
+                    cidr_blocks=["0.0.0.0/0"],
+                    description="Allow HTTP"
+                ),
+            ],
+            egress=[
+                aws.ec2.SecurityGroupEgressArgs(
+                    protocol="-1",
+                    from_port=0,
+                    to_port=0,
+                    cidr_blocks=["0.0.0.0/0"],
+                    description="Allow all outbound traffic"
+                ),
+            ],
+            tags={
+                "Project": "mail-server"
+            },
+            opts=ResourceOptions(parent=self)
+        )
+
         # While testing, create a spot EC2 instance
         expire_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         self.instance_request = aws.ec2.SpotInstanceRequest(
@@ -135,17 +178,16 @@ class MailServer(ComponentResource):
                 ami=self.ami.id,
                 instance_type="t3.micro",
                 iam_instance_profile=self.instance_profile.name,
-                tag_specifications=[aws.ec2.SpotInstanceRequestTagSpecificationArgs(
-                    resource_type="instance",
-                    tags={
+                vpc_security_group_ids=[self.security_group.id],
+                key_name=key_name,
+                tags={
                         "Project": "mail-server",
                         "ExpireAt": expire_at
-                    }
-                )],
-                user_data_base64=base64.b64encode(self.user_data.encode()).decode()
+                },
+                user_data_base64=base64.b64encode(self.user_data.encode()).decode(),
+                wait_for_fulfillment=True,
             ),
-            opts=ResourceOptions(parent=self),
-            wait_for_fulfillment=True
+            opts=ResourceOptions(parent=self)
         )
 
         # Register outputs

@@ -7,7 +7,13 @@ if ! command -v aws &> /dev/null; then
     yum install -y aws-cli
 fi
 
-yum install -y jq docker docker-compose-plugin
+yum install -y jq docker
+
+# Install Docker Compose plugin
+DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
+mkdir -p $DOCKER_CONFIG/cli-plugins
+curl -SL https://github.com/docker/compose/releases/download/v5.0.0/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose
+chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
 
 # Configuration
 SSM_CONFIG_PARAM="/mail-server/config"
