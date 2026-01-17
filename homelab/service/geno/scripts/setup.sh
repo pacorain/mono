@@ -283,6 +283,16 @@ def assign_next(mac):
 
     return jsonify({"mac": mac, "ip": ip, "hostname": hostname})
 
+@app.route('/reset')
+def reset():
+    """Reset the provisioning state."""
+    state = load_state()
+    state["queue"] = []
+    state["installing"] = {}
+    state["provisioned"] = {}
+    save_state(state)
+    return jsonify({"status": "reset"})
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
 EOFPYTHON
