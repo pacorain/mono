@@ -5,7 +5,7 @@ from typing import Optional
 
 import pulumi
 import pulumi_proxmoxve as proxmox
-from pulumi_command import local
+from pulumi_command import remote
 
 from ..models import ProxmoxCredentials, Resource
 from ..service_loader import parse_size_to_gb, parse_size_to_mb
@@ -107,10 +107,22 @@ def create_container(
         with open(script_path) as f:
             script_content = f.read()
 
-        # Use local Command to push and execute script via pct commands
+        # Extract Proxmox host from endpoint (remove https:// and port)
+        proxmox_host = credentials.endpoint.replace("https://", "").replace(
+            "http://", ""
+        ).split(":")[0]
+
+        # Use remote.Command to SSH to Proxmox host and execute pct commands
         # This waits for the container to be ready, then pushes and executes the script
-        startup_exec = local.Command(
+        startup_exec = remote.Command(
             f"{resource.id}-startup",
+            connection=remote.ConnectionArgs(
+                host=proxmox_host,
+                user="root",
+                # Use SSH private key from user's SSH agent
+                # This avoids hardcoding credentials
+                private_key_passphrase="",  # Empty if no passphrase
+            ),
             create=pulumi.Output.all(container.vm_id).apply(
                 lambda args: f"""set -e
 sleep 10  # Wait for container to fully start
