@@ -121,7 +121,7 @@ def create_container(
                 user="root",
                 # Use SSH private key from user's SSH agent
                 # This avoids hardcoding credentials
-                private_key_passphrase="",  # Empty if no passphrase
+                private_key_password="",  # Empty if no passphrase
             ),
             create=pulumi.Output.all(container.vm_id).apply(
                 lambda args: f"""set -e
