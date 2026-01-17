@@ -11,7 +11,7 @@ resources:
       resource_pool: management
       disks:
         rootfs:
-          size: 2G
+          size: 8G
       cpu:
         cores: 1
       memory:

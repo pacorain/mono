@@ -181,5 +181,5 @@ def get_ssh_public_key() -> str:
         CredentialsError: If key cannot be retrieved
     """
     config = _load_config()
-    secrets = config.get("secrets", {})
-    return _resolve_value(secrets.get("ssh_public_key", ""))
+    secrets_config = config.get("secrets", {})
+    return _resolve_value(secrets_config.get("ssh_public_key", ""))

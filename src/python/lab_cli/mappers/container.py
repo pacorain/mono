@@ -17,6 +17,38 @@ DEFAULT_DATASTORE = "local-lvm"
 DEFAULT_BRIDGE = "vmbr0"
 DEFAULT_STORAGE = "local"
 
+# Mapping of template name patterns to Proxmox OS types
+# See: https://pve.proxmox.com/wiki/Linux_Container#pct_settings
+OS_TYPE_PATTERNS = {
+    "alpine": "alpine",
+    "arch": "archlinux",
+    "centos": "centos",
+    "debian": "debian",
+    "devuan": "devuan",
+    "fedora": "fedora",
+    "gentoo": "gentoo",
+    "nixos": "nixos",
+    "opensuse": "opensuse",
+    "ubuntu": "ubuntu",
+}
+
+
+def _detect_os_type(template_name: str) -> str:
+    """Detect the Proxmox OS type from a template name pattern.
+
+    Args:
+        template_name: Template name pattern (e.g., "alpine-3.*", "ubuntu-22.04")
+
+    Returns:
+        Proxmox OS type string (e.g., "alpine", "ubuntu")
+    """
+    template_lower = template_name.lower()
+    for pattern, os_type in OS_TYPE_PATTERNS.items():
+        if template_lower.startswith(pattern):
+            return os_type
+    # Default to unmanaged if no match found
+    return "unmanaged"
+
 
 def create_container(
     resource: Resource,
@@ -69,7 +101,7 @@ def create_container(
         # Operating system template
         operating_system=proxmox.ct.ContainerOperatingSystemArgs(
             template_file_id=template_file_id,
-            type="unmanaged",  # Let Proxmox detect OS type
+            type=_detect_os_type(props.template.name),
         ),
         # CPU configuration
         cpu=proxmox.ct.ContainerCpuArgs(
@@ -119,18 +151,18 @@ def create_container(
             connection=remote.ConnectionArgs(
                 host=proxmox_host,
                 user="root",
-                # Use SSH private key from user's SSH agent
-                # This avoids hardcoding credentials
-                private_key_password="",  # Empty if no passphrase
+                port=22,
+                private_key=Path("~/.ssh/pulumi_infra").expanduser().read_text(),
             ),
             create=pulumi.Output.all(container.vm_id).apply(
-                lambda args: f"""set -e
+                lambda args: f"""set -ex
 sleep 10  # Wait for container to fully start
-pct push {args[0]} - /tmp/startup.sh <<'EOFSCRIPT'
+cat > /tmp/{args[0]}_startup.sh <<'EOFSCRIPT'
 {script_content}
 EOFSCRIPT
+pct push {args[0]} /tmp/{args[0]}_startup.sh /tmp/startup.sh
 pct exec {args[0]} -- chmod +x /tmp/startup.sh
-pct exec {args[0]} -- /tmp/startup.sh
+pct exec {args[0]} -- sh -c '/tmp/startup.sh > /var/log/startup.log 2>&1 & echo $! > /var/run/startup.pid'
 """
             ),
             opts=pulumi.ResourceOptions(

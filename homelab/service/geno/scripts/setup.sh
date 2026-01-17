@@ -25,7 +25,7 @@ mkdir -p /etc/geno
 
 # Download Proxmox VE ISO
 PROXMOX_ISO_URL="https://enterprise.proxmox.com/iso/proxmox-ve_9.1-1.iso"
-wget -O /srv/http/iso/proxmox-ve.iso "$PROXMOX_ISO_URL"
+wget -q -O /srv/http/iso/proxmox-ve.iso "$PROXMOX_ISO_URL"
 
 # Create PXE configuration directory
 mkdir -p /var/lib/tftpboot/pxelinux.cfg
