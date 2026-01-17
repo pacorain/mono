@@ -1,7 +1,11 @@
 """Mapper for Proxmox container resources."""
 
+from pathlib import Path
+from typing import Optional
+
 import pulumi
 import pulumi_proxmoxve as proxmox
+from pulumi_command import local
 
 from ..models import ProxmoxCredentials, Resource
 from ..service_loader import parse_size_to_gb, parse_size_to_mb
@@ -19,6 +23,7 @@ def create_container(
     provider: proxmox.Provider,
     credentials: ProxmoxCredentials,
     node_name: str = DEFAULT_NODE,
+    service_dir: Optional[Path] = None,
 ) -> proxmox.ct.Container:
     """Create a Pulumi proxmoxve Container resource from a service Resource.
 
@@ -27,6 +32,7 @@ def create_container(
         provider: Proxmox provider instance
         credentials: Proxmox credentials for template resolution
         node_name: Proxmox node to deploy to
+        service_dir: Service directory for accessing startup scripts
 
     Returns:
         Pulumi Container resource
@@ -92,6 +98,33 @@ def create_container(
         # Use the explicit provider
         opts=pulumi.ResourceOptions(provider=provider),
     )
+
+    # Execute startup script if configured
+    if props.startup_script and service_dir:
+        script_path = service_dir / props.startup_script.path
+
+        # Read script content
+        with open(script_path) as f:
+            script_content = f.read()
+
+        # Use local Command to push and execute script via pct commands
+        # This waits for the container to be ready, then pushes and executes the script
+        startup_exec = local.Command(
+            f"{resource.id}-startup",
+            create=pulumi.Output.all(container.vm_id).apply(
+                lambda args: f"""set -e
+sleep 10  # Wait for container to fully start
+pct push {args[0]} - /tmp/startup.sh <<'EOFSCRIPT'
+{script_content}
+EOFSCRIPT
+pct exec {args[0]} -- chmod +x /tmp/startup.sh
+pct exec {args[0]} -- /tmp/startup.sh
+"""
+            ),
+            opts=pulumi.ResourceOptions(
+                depends_on=[container],
+            ),
+        )
 
     return container
 

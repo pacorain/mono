@@ -1,0 +1,26 @@
+id: geno
+description: Intellegent provisionioning container for new Proxmox nodes
+
+resources:
+  - id: geno-container
+    type: proxmox:container
+    properties:
+      hostname: geno
+      template:
+        name: alpine-3.*
+      resource_pool: management
+      disks:
+        rootfs:
+          size: 2G
+      cpu:
+        cores: 1
+      memory:
+        size: 512M
+        swap: 0M
+      network_interfaces:
+        eth0:
+          ipv4:
+            address: 10.11.0.65/22
+            gateway: 10.11.0.1
+      startup_script:
+        path: scripts/setup.sh
