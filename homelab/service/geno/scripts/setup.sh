@@ -23,9 +23,24 @@ mkdir -p /srv/http/answers
 mkdir -p /srv/geno/state
 mkdir -p /etc/geno
 
+# Download Proxmox VE ISO
+PROXMOX_ISO_URL="https://enterprise.proxmox.com/iso/proxmox-ve_9.1-1.iso"
+wget -O /srv/http/iso/proxmox-ve.iso "$PROXMOX_ISO_URL"
+
+# Create PXE configuration directory
+mkdir -p /var/lib/tftpboot/pxelinux.cfg
+cat > /var/lib/tftpboot/pxelinux.cfg/default <<'EOFPXE'
+DEFAULT proxmox
+LABEL proxmox
+    KERNEL memdisk
+    INITRD http://10.11.0.65/iso/proxmox-ve.iso
+    APPEND iso raw
+EOFPXE
+
 # Copy PXE boot files
 cp /usr/share/syslinux/pxelinux.0 /var/lib/tftpboot/
 cp /usr/share/syslinux/*.c32 /var/lib/tftpboot/
+cp /usr/share/syslinux/memdisk /var/lib/tftpboot/
 
 # Configure dnsmasq for DHCP + TFTP
 cat > /etc/dnsmasq.conf <<'EOF'
@@ -42,6 +57,9 @@ dhcp-option=3,10.11.0.1
 
 # DNS servers
 dhcp-option=6,8.8.8.8,1.1.1.1
+
+# Proxmox answer file URL (option 250)
+dhcp-option=250,http://10.11.0.65/answer
 
 # PXE boot configuration
 dhcp-boot=pxelinux.0
@@ -211,6 +229,8 @@ def serve_answer(ip):
     # TODO: Get these from secure storage (1Password)
     answer = template.replace("{{ hostname }}", hostname)
     answer = answer.replace("{{ ip }}", ip)
+    answer = answer.replace("{{ root_password_hashed }}", "$y$j9T$72Y8qOSgNS.c4VfeamXGx0$l3Ms5HnMRjRRYR6T7tTubjJU/4uBnKMA//GWURm4Bm1")
+    answer = answer.replace("{{ ssh_public_key }}", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM7xDRJrfc+bsgZpHmmvDtKhMIlDlJd7OQ1x08UPAHiH")
     # Add other substitutions as needed
 
     return Response(answer, mimetype='text/plain')
