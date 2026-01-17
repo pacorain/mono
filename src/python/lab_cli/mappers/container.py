@@ -1,7 +1,11 @@
 """Mapper for Proxmox container resources."""
 
+from pathlib import Path
+from typing import Optional
+
 import pulumi
 import pulumi_proxmoxve as proxmox
+from pulumi_command import remote
 
 from ..models import ProxmoxCredentials, Resource
 from ..service_loader import parse_size_to_gb, parse_size_to_mb
@@ -13,12 +17,45 @@ DEFAULT_DATASTORE = "local-lvm"
 DEFAULT_BRIDGE = "vmbr0"
 DEFAULT_STORAGE = "local"
 
+# Mapping of template name patterns to Proxmox OS types
+# See: https://pve.proxmox.com/wiki/Linux_Container#pct_settings
+OS_TYPE_PATTERNS = {
+    "alpine": "alpine",
+    "arch": "archlinux",
+    "centos": "centos",
+    "debian": "debian",
+    "devuan": "devuan",
+    "fedora": "fedora",
+    "gentoo": "gentoo",
+    "nixos": "nixos",
+    "opensuse": "opensuse",
+    "ubuntu": "ubuntu",
+}
+
+
+def _detect_os_type(template_name: str) -> str:
+    """Detect the Proxmox OS type from a template name pattern.
+
+    Args:
+        template_name: Template name pattern (e.g., "alpine-3.*", "ubuntu-22.04")
+
+    Returns:
+        Proxmox OS type string (e.g., "alpine", "ubuntu")
+    """
+    template_lower = template_name.lower()
+    for pattern, os_type in OS_TYPE_PATTERNS.items():
+        if template_lower.startswith(pattern):
+            return os_type
+    # Default to unmanaged if no match found
+    return "unmanaged"
+
 
 def create_container(
     resource: Resource,
     provider: proxmox.Provider,
     credentials: ProxmoxCredentials,
     node_name: str = DEFAULT_NODE,
+    service_dir: Optional[Path] = None,
 ) -> proxmox.ct.Container:
     """Create a Pulumi proxmoxve Container resource from a service Resource.
 
@@ -27,6 +64,7 @@ def create_container(
         provider: Proxmox provider instance
         credentials: Proxmox credentials for template resolution
         node_name: Proxmox node to deploy to
+        service_dir: Service directory for accessing startup scripts
 
     Returns:
         Pulumi Container resource
@@ -63,7 +101,7 @@ def create_container(
         # Operating system template
         operating_system=proxmox.ct.ContainerOperatingSystemArgs(
             template_file_id=template_file_id,
-            type="unmanaged",  # Let Proxmox detect OS type
+            type=_detect_os_type(props.template.name),
         ),
         # CPU configuration
         cpu=proxmox.ct.ContainerCpuArgs(
@@ -92,6 +130,45 @@ def create_container(
         # Use the explicit provider
         opts=pulumi.ResourceOptions(provider=provider),
     )
+
+    # Execute startup script if configured
+    if props.startup_script and service_dir:
+        script_path = service_dir / props.startup_script.path
+
+        # Read script content
+        with open(script_path) as f:
+            script_content = f.read()
+
+        # Extract Proxmox host from endpoint (remove https:// and port)
+        proxmox_host = credentials.endpoint.replace("https://", "").replace(
+            "http://", ""
+        ).split(":")[0]
+
+        # Use remote.Command to SSH to Proxmox host and execute pct commands
+        # This waits for the container to be ready, then pushes and executes the script
+        startup_exec = remote.Command(
+            f"{resource.id}-startup",
+            connection=remote.ConnectionArgs(
+                host=proxmox_host,
+                user="root",
+                port=22,
+                private_key=Path("~/.ssh/pulumi_infra").expanduser().read_text(),
+            ),
+            create=pulumi.Output.all(container.vm_id).apply(
+                lambda args: f"""set -ex
+sleep 10  # Wait for container to fully start
+cat > /tmp/{args[0]}_startup.sh <<'EOFSCRIPT'
+{script_content}
+EOFSCRIPT
+pct push {args[0]} /tmp/{args[0]}_startup.sh /tmp/startup.sh
+pct exec {args[0]} -- chmod +x /tmp/startup.sh
+pct exec {args[0]} -- sh -c '/tmp/startup.sh > /var/log/startup.log 2>&1 & echo $! > /var/run/startup.pid'
+"""
+            ),
+            opts=pulumi.ResourceOptions(
+                depends_on=[container],
+            ),
+        )
 
     return container
 

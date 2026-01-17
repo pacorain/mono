@@ -9,7 +9,7 @@ from pulumi import automation as auto
 import pulumi_proxmoxve as proxmox
 
 from .credentials import get_proxmox_credentials, get_pulumi_config, ProxmoxCredentials, PulumiConfig
-from .service_loader import load_service
+from .service_loader import load_service, SERVICES_BASE_PATH
 from .mappers.container import create_container
 from .models import Service
 
@@ -34,12 +34,14 @@ def _ensure_work_dir() -> None:
 def _create_pulumi_program(
     service: Service,
     credentials: ProxmoxCredentials,
+    service_dir: Path,
 ) -> Callable[[], None]:
     """Create a Pulumi program function for the given service.
 
     Args:
         service: Parsed service definition
         credentials: Proxmox credentials
+        service_dir: Service directory for accessing startup scripts
 
     Returns:
         A callable that defines the Pulumi infrastructure
@@ -59,7 +61,12 @@ def _create_pulumi_program(
         # Create resources for each container in the service
         for resource in service.resources:
             if resource.type == "proxmox:container":
-                container = create_container(resource, provider, credentials)
+                container = create_container(
+                    resource,
+                    provider,
+                    credentials,
+                    service_dir=service_dir,
+                )
 
                 # Export useful outputs
                 pulumi.export(f"{resource.id}_id", container.vm_id)
@@ -71,6 +78,7 @@ def _get_or_create_stack(
     service: Service,
     proxmox_credentials: ProxmoxCredentials,
     pulumi_config: PulumiConfig,
+    service_dir: Path,
 ) -> auto.Stack:
     """Get or create a Pulumi stack for the service.
 
@@ -78,6 +86,7 @@ def _get_or_create_stack(
         service: Parsed service definition
         proxmox_credentials: Proxmox credentials
         pulumi_config: Pulumi backend and AWS configuration
+        service_dir: Service directory for accessing startup scripts
 
     Returns:
         Pulumi Stack instance
@@ -108,7 +117,7 @@ def _get_or_create_stack(
     stack = auto.create_or_select_stack(
         stack_name=service.id,
         project_name=PROJECT_NAME,
-        program=_create_pulumi_program(service, proxmox_credentials),
+        program=_create_pulumi_program(service, proxmox_credentials, service_dir),
         opts=auto.LocalWorkspaceOptions(
             work_dir=str(WORK_DIR),
             project_settings=project_settings,
@@ -135,12 +144,15 @@ def preview_service(service_name: str, on_output: Callable[[str], None] = print)
     # Load service definition
     service = load_service(service_name)
 
+    # Get service directory
+    service_dir = SERVICES_BASE_PATH / service_name
+
     # Get credentials from 1Password via config.yaml
     proxmox_credentials = get_proxmox_credentials()
     pulumi_config = get_pulumi_config()
 
     # Get or create the stack
-    stack = _get_or_create_stack(service, proxmox_credentials, pulumi_config)
+    stack = _get_or_create_stack(service, proxmox_credentials, pulumi_config, service_dir)
 
     # Run preview
     return stack.preview(on_output=on_output)
@@ -162,12 +174,15 @@ def deploy_service(service_name: str, on_output: Callable[[str], None] = print) 
     # Load service definition
     service = load_service(service_name)
 
+    # Get service directory
+    service_dir = SERVICES_BASE_PATH / service_name
+
     # Get credentials from 1Password via config.yaml
     proxmox_credentials = get_proxmox_credentials()
     pulumi_config = get_pulumi_config()
 
     # Get or create the stack
-    stack = _get_or_create_stack(service, proxmox_credentials, pulumi_config)
+    stack = _get_or_create_stack(service, proxmox_credentials, pulumi_config, service_dir)
 
     # Run deployment
     return stack.up(on_output=on_output)
@@ -189,12 +204,15 @@ def destroy_service(service_name: str, on_output: Callable[[str], None] = print)
     # Load service definition
     service = load_service(service_name)
 
+    # Get service directory
+    service_dir = SERVICES_BASE_PATH / service_name
+
     # Get credentials from 1Password via config.yaml
     proxmox_credentials = get_proxmox_credentials()
     pulumi_config = get_pulumi_config()
 
     # Get or create the stack
-    stack = _get_or_create_stack(service, proxmox_credentials, pulumi_config)
+    stack = _get_or_create_stack(service, proxmox_credentials, pulumi_config, service_dir)
 
     # Run destroy
     return stack.destroy(on_output=on_output)

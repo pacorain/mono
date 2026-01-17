@@ -14,6 +14,7 @@ from .models import (
     NetworkInterface,
     Resource,
     Service,
+    StartupScript,
     TemplateConfig,
 )
 
@@ -166,6 +167,13 @@ def _parse_container_properties(props: dict) -> ContainerProperties:
                 iface_name, iface_data
             )
 
+    # Parse startup script (optional)
+    startup_script = None
+    if "startup_script" in props:
+        startup_script = StartupScript(
+            path=props["startup_script"]["path"]
+        )
+
     return ContainerProperties(
         hostname=props["hostname"],
         template=TemplateConfig(name=props["template"]["name"]),
@@ -174,6 +182,7 @@ def _parse_container_properties(props: dict) -> ContainerProperties:
         cpu=cpu,
         memory=memory,
         network_interfaces=network_interfaces,
+        startup_script=startup_script,
     )
 
 

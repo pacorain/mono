@@ -68,6 +68,13 @@ class TemplateConfig:
 
 
 @dataclass
+class StartupScript:
+    """Startup script configuration for container initialization."""
+
+    path: str  # Relative path to script file in service directory
+
+
+@dataclass
 class ContainerProperties:
     """Properties for a Proxmox container."""
 
@@ -78,6 +85,7 @@ class ContainerProperties:
     cpu: CpuConfig = field(default_factory=CpuConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     network_interfaces: dict[str, NetworkInterface] = field(default_factory=dict)
+    startup_script: Optional[StartupScript] = None
 
 
 @dataclass
