@@ -1,0 +1,18 @@
+secrets:
+  # SSH public key for accessing VMs/containers
+  ssh_public_key: "op://adcbsm44sq5jkjf5hh7jmhdtg4/myhn4kayrjtxrz6jr6gtz6bcd4/public key"
+  
+  root_passwords:
+    op:
+      # Writes passwords for new VMs/containers to 1Password
+      vault: adcbsm44sq5jkjf5hh7jmhdtg4
+
+proxmox:
+  host: "op://yu7fihprz6dmby76gpkpsh7rdy/3wwqbpwwjpuaw4apuonw3umffu/host"
+  api_token_id: "op://yu7fihprz6dmby76gpkpsh7rdy/3wwqbpwwjpuaw4apuonw3umffu/username"
+  api_token: "op://yu7fihprz6dmby76gpkpsh7rdy/3wwqbpwwjpuaw4apuonw3umffu/credential"
+
+pulumi:
+  backend: "op://knhd2xaemjbr7kt4ikv6rer5pa/3rhuo2dzrll2vvw2qh22mxkjru/location-homelab"
+  aws_access_key_id: "op://yu7fihprz6dmby76gpkpsh7rdy/ewl77n7upqjt7vhrk2ytykbw5u/username"
+  aws_secret_access_key: "op://yu7fihprz6dmby76gpkpsh7rdy/ewl77n7upqjt7vhrk2ytykbw5u/credential"

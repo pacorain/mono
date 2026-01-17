@@ -1,0 +1,5 @@
+backend:
+  url: s3://pacorain-pulumi-thin-technician/homelab
+main: /Users/austin/src/mono
+name: lab-homelab
+runtime: python

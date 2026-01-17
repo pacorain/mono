@@ -1,0 +1,27 @@
+id: boo
+description: Playground for testing lab_cli deployment on Proxmox
+
+resources:
+  - id: boo-container
+    type: proxmox:container
+    properties:
+      hostname: boo
+      template:
+        name: alpine-3.*
+      resource_pool: experimental
+      disks:
+        rootfs:
+          size: 4G
+      cpu:
+        cores: 1
+      memory:
+        size: 512M
+        swap: 0M
+      network_interfaces:
+        eth0:
+          ipv4:
+            address: 10.11.1.2/22
+            gateway: 10.11.0.1
+          ipv6:
+            address: fd00:11:1::2/64
+            gateway: fd00:11::1
