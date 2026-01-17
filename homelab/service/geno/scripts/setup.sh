@@ -102,6 +102,9 @@ server {
 }
 EOF
 
+# Remove default nginx config to prevent conflicts
+rm -f /etc/nginx/http.d/default.conf
+
 # Copy answer file template to geno directory
 cat > /etc/geno/answer.toml.tpl <<'EOFTEMPLATE'
 [global]
