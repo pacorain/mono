@@ -81,6 +81,7 @@ class ContainerProperties:
     hostname: str
     template: TemplateConfig
     resource_pool: Optional[str] = None
+    privileged: Optional[bool] = False
     disks: dict[str, DiskConfig] = field(default_factory=dict)
     cpu: CpuConfig = field(default_factory=CpuConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)

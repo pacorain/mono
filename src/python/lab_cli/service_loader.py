@@ -178,6 +178,7 @@ def _parse_container_properties(props: dict) -> ContainerProperties:
         hostname=props["hostname"],
         template=TemplateConfig(name=props["template"]["name"]),
         resource_pool=props.get("resource_pool"),
+        privileged=props.get("privileged", False),
         disks=disks,
         cpu=cpu,
         memory=memory,

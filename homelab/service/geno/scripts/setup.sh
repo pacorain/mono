@@ -14,7 +14,8 @@ apk add --no-cache \
     py3-pip \
     py3-flask \
     wget \
-    syslinux
+    syslinux \
+    p7zip
 
 # Create directories
 mkdir -p /var/lib/tftpboot
@@ -22,19 +23,28 @@ mkdir -p /srv/http/iso
 mkdir -p /srv/http/answers
 mkdir -p /srv/geno/state
 mkdir -p /etc/geno
+mkdir -p /var/lib/tftpboot/pxelinux.cfg
 
 # Download Proxmox VE ISO
 PROXMOX_ISO_URL="https://enterprise.proxmox.com/iso/proxmox-ve_9.1-1.iso"
-wget -q -O /srv/http/iso/proxmox-ve.iso "$PROXMOX_ISO_URL"
+if [ ! -f /srv/http/iso/proxmox-ve.iso ]; then
+    echo "Downloading Proxmox VE ISO..."
+    wget -q -O /srv/http/iso/proxmox-ve.iso "$PROXMOX_ISO_URL"
+fi
 
-# Create PXE configuration directory
-mkdir -p /var/lib/tftpboot/pxelinux.cfg
+# Extract kernel and initrd from the ISO
+mkdir -p /tmp/proxmox-extract
+7z x /srv/http/iso/proxmox-ve.iso -o/tmp/proxmox-extract -y -snl-
+cp /tmp/proxmox-extract/boot/linux26 /var/lib/tftpboot/proxmox-kernel
+cp /tmp/proxmox-extract/boot/initrd.img /var/lib/tftpboot/proxmox-initrd.img
+
+# Update PXE config
 cat > /var/lib/tftpboot/pxelinux.cfg/default <<'EOFPXE'
 DEFAULT proxmox
 LABEL proxmox
-    KERNEL memdisk
-    INITRD http://10.11.0.65/iso/proxmox-ve.iso
-    APPEND iso raw
+    KERNEL proxmox-kernel
+    INITRD proxmox-initrd.img
+    APPEND vga=791 video=vesafb:ywrap,mtrr ramdisk_size=16777216 rw quiet proxmox-start-auto-installer proxmoxinst-fetch=http://10.11.0.65/answer proxmox-fetch=http://10.11.0.1/iso/proxmox-ve.iso
 EOFPXE
 
 # Copy PXE boot files
@@ -303,11 +313,11 @@ chmod +x /srv/geno/app.py
 
 # dnsmasq service
 rc-update add dnsmasq default
-rc-service dnsmasq start
+rc-service dnsmasq restart
 
 # nginx service
 rc-update add nginx default
-rc-service nginx start
+rc-service nginx restart
 
 # Create init script for geno app
 cat > /etc/init.d/geno-app <<'EOFINIT'

@@ -126,7 +126,7 @@ def create_container(
         # Start container after creation
         started=True,
         # Unprivileged container (safer default)
-        unprivileged=True,
+        unprivileged=False if getattr(props, "privileged", False) else True,
         # Use the explicit provider
         opts=pulumi.ResourceOptions(provider=provider),
     )

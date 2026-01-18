@@ -1,5 +1,5 @@
 backend:
   url: s3://pacorain-pulumi-thin-technician/homelab
-main: /Users/austin/src/mono
+main: /Users/austin/src/mono/homelab/.pulumi-work
 name: lab-homelab
 runtime: python

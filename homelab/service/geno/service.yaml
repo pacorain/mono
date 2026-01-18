@@ -9,6 +9,7 @@ resources:
       template:
         name: alpine-3.*
       resource_pool: management
+      privileged: true
       disks:
         rootfs:
           size: 8G
