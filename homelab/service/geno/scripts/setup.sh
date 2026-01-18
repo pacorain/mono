@@ -17,77 +17,25 @@ apt install -y \
     python3 \
     python3-flask \
     wget \
-    syslinux \
-    syslinux-common \
-    pxelinux \
-    p7zip \
     zstd \
     cpio \
     xorriso \
     proxmox-auto-install-assistant
 
 # Create directories
-mkdir -p /var/lib/tftpboot
-mkdir -p /tmp/iso
-mkdir -p /tmp/initrd-extract
 mkdir -p /srv/http/answers
 mkdir -p /srv/geno/state
 mkdir -p /etc/geno
-mkdir -p /var/lib/tftpboot/pxelinux.cfg
 
-# Download Proxmox VE ISO
-PROXMOX_ISO_URL="https://enterprise.proxmox.com/iso/proxmox-ve_9.1-1.iso"
-if [ ! -f /tmp/iso/proxmox-ve.iso ]; then
-    echo "Downloading Proxmox VE ISO..."
-    wget --progress=dot:mega -O /tmp/iso/proxmox-ve.iso "$PROXMOX_ISO_URL"
-fi
-
-# Modify the ISO to include the auto-installer
-echo "Preparing Proxmox auto-install ISO..."
-proxmox-auto-install-assistant prepare-iso \
-    /tmp/iso/proxmox-ve.iso \
-    --fetch-from http \
-    --output /tmp/iso/proxmox-ve-auto.iso
-
-# Extract kernel and initrd from the ISO
-echo "Extracting Proxmox kernel and initrd..."
-mkdir -p /tmp/proxmox-extract
-7z x /tmp/iso/proxmox-ve.iso -o/tmp/proxmox-extract -y -snl-
-cp /tmp/proxmox-extract/boot/linux26 /var/lib/tftpboot/proxmox-kernel
-
-# Modify initrd to include the ISO
-echo "Adding ISO to initrd..."
-cd /tmp/initrd-extract
-zstd -d < /tmp/proxmox-extract/boot/initrd.img | cpio -idmv
-cp /tmp/iso/proxmox-ve-auto.iso /tmp/initrd-extract/proxmox.iso
-find /tmp/initrd-extract | cpio -o -H newc | zstd -T0 -19 > /var/lib/tftpboot/proxmox-initrd.img
-
-rm -rf /tmp/proxmox-extract
-rm -rf /tmp/initrd-extract
-rm /tmp/iso/proxmox-ve-auto.iso
-
-# Update PXE config
-cat > /var/lib/tftpboot/pxelinux.cfg/default <<'EOFPXE'
-DEFAULT proxmox-auto
-LABEL proxmox-auto
-    KERNEL proxmox-kernel
-    APPEND initrd=proxmox-initrd.img vga=791 video=vesafb:ywrap,mtrr ramdisk_size=16777216 rw quiet rw quiet proxmox-start-auto-installer iso-url=http://10.11.0.65/iso/proxmox-ve-auto.iso
-EOFPXE
-
-# Copy PXE boot files
-cp /usr/lib/syslinux/modules/bios/*.c32 /var/lib/tftpboot/
-cp /usr/lib/PXELINUX/pxelinux.0 /var/lib/tftpboot/
-cp /usr/lib/syslinux/memdisk /var/lib/tftpboot/
-
-# Configure dnsmasq for DHCP + TFTP
+# Configure dnsmasq for DHCP
 cat > /etc/dnsmasq.conf <<'EOF'
 # Interface binding
 interface=eth0
 bind-interfaces
 
 # DHCP configuration
-# Start with no static reservations - these will be added dynamically
-dhcp-range=10.11.0.2,10.11.0.6,255.255.252.0,12h
+# Temporary IPs for initial lease - Flask app assigns permanent IPs
+dhcp-range=10.11.0.7,10.11.0.15,255.255.252.0,12h
 
 # Gateway
 dhcp-option=3,10.11.0.1
@@ -97,13 +45,6 @@ dhcp-option=6,8.8.8.8,1.1.1.1
 
 # Proxmox answer file URL (option 250)
 dhcp-option=250,http://10.11.0.65/answer
-
-# PXE boot configuration
-dhcp-boot=pxelinux.0
-
-# Enable TFTP server
-enable-tftp
-tftp-root=/var/lib/tftpboot
 
 # Additional DHCP configuration file for dynamic updates
 dhcp-hostsfile=/etc/dnsmasq.hosts
@@ -145,27 +86,28 @@ rm -f /etc/nginx/sites-enabled/default
 # Copy answer file template to geno directory
 cat > /etc/geno/answer.toml.tpl <<'EOFTEMPLATE'
 [global]
-keyboard = en-us
-country = US
-fqdn = {{ hostname }}.rwhq.net
-timezone = America/New_York
-mailto = austin@rainwater.family
-root-password-hashed = {{ root_password_hashed }}
-root-ssh-keys = {{ ssh_public_key }}
+keyboard = "en-us"
+country = "us"
+fqdn = "{{ hostname }}.rwhq.net"
+timezone = "America/New_York"
+mailto = "austin@rainwater.family"
+root-password-hashed = "{{ root_password_hashed }}"
+root-ssh-keys = ["{{ ssh_public_key }}"]
 reboot-on-error = false
 
 [network]
-source = from-answer
-cidr = {{ ip }}/22
-dns = 8.8.8.8
-gateway = 10.11.0.1/22
+source = "from-answer"
+cidr = "{{ ip }}/22"
+dns = "8.8.8.8"
+gateway = "10.11.0.1"
+filter.INTERFACE = "e*"
 
 [disk-setup]
-filesystem = ext4
-disk_list = ["nvme0n1"]
+filesystem = "ext4"
+disk-list = ["nvme0n1"]
 
 [post-installation-webhook]
-url = http://10.11.0.65/post-proxmox-install
+url = "http://10.11.0.65/post-proxmox-install"
 EOFTEMPLATE
 
 # Copy node names queue
@@ -182,7 +124,6 @@ cat > /srv/geno/app.py <<'EOFPYTHON'
 """Geno provisioning server - progressive node configuration."""
 
 import json
-import os
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, request, jsonify, Response
@@ -192,7 +133,6 @@ app = Flask(__name__)
 STATE_FILE = Path("/srv/geno/state/state.json")
 NAMES_FILE = Path("/etc/geno/names")
 ANSWER_TEMPLATE = Path("/etc/geno/answer.toml.tpl")
-DNSMASQ_HOSTS = Path("/etc/dnsmasq.hosts")
 
 # Load or initialize state
 def load_state():
@@ -201,33 +141,14 @@ def load_state():
             return json.load(f)
     return {
         "queue": [],  # [(ip, hostname), ...]
-        "installing": {},  # {mac: {"ip": "...", "hostname": "...", "timestamp": "..."}}
-        "provisioned": {}  # {mac: {"ip": "...", "hostname": "...", "completed": "..."}}
+        "installing": {},  # {temp_ip: {"ip": "...", "hostname": "...", "timestamp": "..."}}
+        "provisioned": {}  # {permanent_ip: {"ip": "...", "hostname": "...", "temp_ip": "...", "completed": "..."}}
     }
 
 def save_state(state):
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(STATE_FILE, 'w') as f:
         json.dump(state, f, indent=2)
-
-def update_dnsmasq():
-    """Update dnsmasq hosts file and reload."""
-    state = load_state()
-
-    lines = []
-    # Add entries to ignore provisioned MACs
-    for mac, info in state["provisioned"].items():
-        lines.append(f"{mac},ignore")
-
-    # Add reservations for installing nodes
-    for mac, info in state["installing"].items():
-        lines.append(f"{mac},{info['ip']},{info['hostname']}")
-
-    with open(DNSMASQ_HOSTS, 'w') as f:
-        f.write('\n'.join(lines))
-
-    # Reload dnsmasq
-    os.system("killall -HUP dnsmasq")
 
 # Initialize queue on startup
 state = load_state()
@@ -240,56 +161,87 @@ if not state["queue"]:
     state["queue"] = [(f"{base_ip}.{i+2}", name) for i, name in enumerate(names)]
     save_state(state)
 
-@app.route('/dhcp-script', methods=['POST'])
-def dhcp_script():
-    """Called by dnsmasq for DHCP events (if using dhcp-script option)."""
-    # This endpoint can be used for dynamic DHCP decision-making
-    # For now, we rely on dnsmasq.hosts file updates
-    pass
-
-@app.route('/answer/<ip>')
-def serve_answer(ip):
-    """Serve answer file for specific IP."""
+@app.route('/answer', methods=['GET', 'POST'])
+def serve_answer():
+    """Serve answer file based on requesting IP. Assigns config on first request."""
     state = load_state()
 
-    # Find the hostname for this IP
-    hostname = None
-    for mac, info in state["installing"].items():
-        if info["ip"] == ip:
-            hostname = info["hostname"]
+    requesting_ip = request.headers.get('X-Real-IP', request.remote_addr)
+
+    # Check if this IP already has a config assigned
+    config = None
+    for temp_ip, info in state["installing"].items():
+        if temp_ip == requesting_ip:
+            config = info
             break
 
-    if not hostname:
-        return "Answer file not available", 404
+    # If not found, assign next config from queue
+    if not config:
+        if not state["queue"]:
+            app.logger.warning(f"No configs left in queue for IP: {requesting_ip}")
+            return "No configurations available", 503
+
+        # Pop next config from queue
+        permanent_ip, hostname = state["queue"].pop(0)
+
+        config = {
+            "ip": permanent_ip,
+            "hostname": hostname,
+            "status": "installing",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        # Key by temp_ip instead of MAC (we don't have MAC here)
+        state["installing"][requesting_ip] = config
+        save_state(state)
+
+        app.logger.info(f"Assigned {hostname} ({permanent_ip}) to temp IP {requesting_ip}")
 
     # Load template and substitute
     with open(ANSWER_TEMPLATE) as f:
         template = f.read()
 
-    # TODO: Get these from secure storage (1Password)
-    answer = template.replace("{{ hostname }}", hostname)
-    answer = answer.replace("{{ ip }}", ip)
+    # Use the permanent IP and hostname in the answer file
+    answer = template.replace("{{ hostname }}", config["hostname"])
+    answer = answer.replace("{{ ip }}", config["ip"])
     answer = answer.replace("{{ root_password_hashed }}", "$y$j9T$72Y8qOSgNS.c4VfeamXGx0$l3Ms5HnMRjRRYR6T7tTubjJU/4uBnKMA//GWURm4Bm1")
     answer = answer.replace("{{ ssh_public_key }}", "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM7xDRJrfc+bsgZpHmmvDtKhMIlDlJd7OQ1x08UPAHiH")
-    # Add other substitutions as needed
 
     return Response(answer, mimetype='text/plain')
 
 @app.route('/post-proxmox-install', methods=['POST'])
 def post_install_webhook():
     """Webhook endpoint called after Proxmox installation completes."""
-    # Proxmox sends installation details
-    data = request.json or {}
-
-    # Find which MAC completed installation based on IP
-    # This requires extracting IP from the webhook data
-
     state = load_state()
-    # Move from installing to provisioned
-    # Update dnsmasq to ignore this MAC
-    # Return success
 
-    return jsonify({"status": "ok"})
+    # The request comes from the newly installed node using its permanent IP
+    requesting_ip = request.headers.get('X-Real-IP', request.remote_addr)
+
+    # Find which temp_ip entry has this permanent IP
+    completed_temp_ip = None
+    for temp_ip, info in state["installing"].items():
+        if info["ip"] == requesting_ip:
+            completed_temp_ip = temp_ip
+            break
+
+    if not completed_temp_ip:
+        app.logger.warning(f"Post-install webhook from unknown IP: {requesting_ip}")
+        return jsonify({"error": "Unknown source IP"}), 404
+
+    # Move from installing to provisioned (keyed by permanent IP now)
+    info = state["installing"].pop(completed_temp_ip)
+    state["provisioned"][requesting_ip] = {
+        "ip": info["ip"],
+        "hostname": info["hostname"],
+        "temp_ip": completed_temp_ip,
+        "completed": datetime.utcnow().isoformat()
+    }
+
+    save_state(state)
+
+    app.logger.info(f"Provisioning complete: {info['hostname']} ({info['ip']})")
+
+    return jsonify({"status": "ok", "hostname": info["hostname"]})
 
 @app.route('/status')
 def status():
@@ -297,13 +249,13 @@ def status():
     state = load_state()
     return jsonify(state)
 
-@app.route('/assign-next/<mac>')
-def assign_next(mac):
-    """Manually trigger assignment for a specific MAC."""
+@app.route('/assign-next/<temp_ip>')
+def assign_next(temp_ip):
+    """Manually trigger assignment for a specific temp IP."""
     state = load_state()
 
-    if mac in state["provisioned"]:
-        return jsonify({"error": "MAC already provisioned"}), 400
+    if temp_ip in state["installing"]:
+        return jsonify({"error": "IP already installing", "info": state["installing"][temp_ip]}), 400
 
     if not state["queue"]:
         return jsonify({"error": "No configurations left in queue"}), 400
@@ -312,26 +264,34 @@ def assign_next(mac):
     ip, hostname = state["queue"].pop(0)
 
     # Add to installing
-    state["installing"][mac] = {
+    state["installing"][temp_ip] = {
         "ip": ip,
         "hostname": hostname,
+        "status": "installing",
         "timestamp": datetime.utcnow().isoformat()
     }
 
     save_state(state)
+
+    return jsonify({"temp_ip": temp_ip, "ip": ip, "hostname": hostname})
+
+@app.route('/reset', methods=['POST'])
+def reset():
+    """Reset the provisioning state and reinitialize the queue."""
+    # Reload names and recreate queue
+    with open(NAMES_FILE) as f:
+        names = [line.strip() for line in f if line.strip()]
+
+    base_ip = "10.11.0"
+    state = {
+        "queue": [(f"{base_ip}.{i+2}", name) for i, name in enumerate(names)],
+        "installing": {},
+        "provisioned": {}
+    }
+    save_state(state)
     update_dnsmasq()
 
-    return jsonify({"mac": mac, "ip": ip, "hostname": hostname})
-
-@app.route('/reset')
-def reset():
-    """Reset the provisioning state."""
-    state = load_state()
-    state["queue"] = []
-    state["installing"] = {}
-    state["provisioned"] = {}
-    save_state(state)
-    return jsonify({"status": "reset"})
+    return jsonify({"status": "reset", "queue_size": len(state["queue"])})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
@@ -364,7 +324,7 @@ EOF
 
 systemctl daemon-reload
 systemctl enable geno-app
-systemctl start geno-app
+systemctl restart geno-app || true
 
 echo "=== Geno Provisioning Server Setup Complete ==="
 echo "Services running:"
