@@ -7,17 +7,18 @@ resources:
     properties:
       hostname: geno
       template:
-        name: alpine-3.*
+        name: debian-13*
       resource_pool: management
       privileged: true
       disks:
         rootfs:
-          size: 8G
+          size: 16G
       cpu:
-        cores: 1
+        # ISO extraction and repacking can be CPU intensive
+        cores: 4
       memory:
-        size: 512M
-        swap: 0M
+        size: 1G
+        swap: 1G
       network_interfaces:
         eth0:
           ipv4:

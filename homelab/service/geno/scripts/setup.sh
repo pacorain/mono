@@ -3,23 +3,33 @@ set -e
 
 echo "=== Geno Provisioning Server Setup ==="
 
+# Add proxmox repository
+wget https://enterprise.proxmox.com/debian/proxmox-archive-keyring-trixie.gpg -qO /etc/apt/trusted.gpg.d/proxmox-archive-keyring-trixie.gpg
+echo "deb http://download.proxmox.com/debian/pve trixie pve-no-subscription" > /etc/apt/sources.list.d/proxmox.list
+
 # Update package repository
-apk update
+apt update
 
 # Install required packages
-apk add --no-cache \
+apt install -y \
     dnsmasq \
     nginx \
     python3 \
-    py3-pip \
-    py3-flask \
+    python3-flask \
     wget \
     syslinux \
-    p7zip
+    syslinux-common \
+    pxelinux \
+    p7zip \
+    zstd \
+    cpio \
+    xorriso \
+    proxmox-auto-install-assistant
 
 # Create directories
 mkdir -p /var/lib/tftpboot
-mkdir -p /srv/http/iso
+mkdir -p /tmp/iso
+mkdir -p /tmp/initrd-extract
 mkdir -p /srv/http/answers
 mkdir -p /srv/geno/state
 mkdir -p /etc/geno
@@ -27,30 +37,47 @@ mkdir -p /var/lib/tftpboot/pxelinux.cfg
 
 # Download Proxmox VE ISO
 PROXMOX_ISO_URL="https://enterprise.proxmox.com/iso/proxmox-ve_9.1-1.iso"
-if [ ! -f /srv/http/iso/proxmox-ve.iso ]; then
+if [ ! -f /tmp/iso/proxmox-ve.iso ]; then
     echo "Downloading Proxmox VE ISO..."
-    wget -q -O /srv/http/iso/proxmox-ve.iso "$PROXMOX_ISO_URL"
+    wget --progress=dot:mega -O /tmp/iso/proxmox-ve.iso "$PROXMOX_ISO_URL"
 fi
 
+# Modify the ISO to include the auto-installer
+echo "Preparing Proxmox auto-install ISO..."
+proxmox-auto-install-assistant prepare-iso \
+    /tmp/iso/proxmox-ve.iso \
+    --fetch-from http \
+    --output /tmp/iso/proxmox-ve-auto.iso
+
 # Extract kernel and initrd from the ISO
+echo "Extracting Proxmox kernel and initrd..."
 mkdir -p /tmp/proxmox-extract
-7z x /srv/http/iso/proxmox-ve.iso -o/tmp/proxmox-extract -y -snl-
+7z x /tmp/iso/proxmox-ve.iso -o/tmp/proxmox-extract -y -snl-
 cp /tmp/proxmox-extract/boot/linux26 /var/lib/tftpboot/proxmox-kernel
-cp /tmp/proxmox-extract/boot/initrd.img /var/lib/tftpboot/proxmox-initrd.img
+
+# Modify initrd to include the ISO
+echo "Adding ISO to initrd..."
+cd /tmp/initrd-extract
+zstd -d < /tmp/proxmox-extract/boot/initrd.img | cpio -idmv
+cp /tmp/iso/proxmox-ve-auto.iso /tmp/initrd-extract/proxmox.iso
+find /tmp/initrd-extract | cpio -o -H newc | zstd -T0 -19 > /var/lib/tftpboot/proxmox-initrd.img
+
+rm -rf /tmp/proxmox-extract
+rm -rf /tmp/initrd-extract
+rm /tmp/iso/proxmox-ve-auto.iso
 
 # Update PXE config
 cat > /var/lib/tftpboot/pxelinux.cfg/default <<'EOFPXE'
-DEFAULT proxmox
-LABEL proxmox
+DEFAULT proxmox-auto
+LABEL proxmox-auto
     KERNEL proxmox-kernel
-    INITRD proxmox-initrd.img
-    APPEND vga=791 video=vesafb:ywrap,mtrr ramdisk_size=16777216 rw quiet proxmox-start-auto-installer proxmoxinst-fetch=http://10.11.0.65/answer proxmox-fetch=http://10.11.0.1/iso/proxmox-ve.iso
+    APPEND initrd=proxmox-initrd.img vga=791 video=vesafb:ywrap,mtrr ramdisk_size=16777216 rw quiet rw quiet proxmox-start-auto-installer iso-url=http://10.11.0.65/iso/proxmox-ve-auto.iso
 EOFPXE
 
 # Copy PXE boot files
-cp /usr/share/syslinux/pxelinux.0 /var/lib/tftpboot/
-cp /usr/share/syslinux/*.c32 /var/lib/tftpboot/
-cp /usr/share/syslinux/memdisk /var/lib/tftpboot/
+cp /usr/lib/syslinux/modules/bios/*.c32 /var/lib/tftpboot/
+cp /usr/lib/PXELINUX/pxelinux.0 /var/lib/tftpboot/
+cp /usr/lib/syslinux/memdisk /var/lib/tftpboot/
 
 # Configure dnsmasq for DHCP + TFTP
 cat > /etc/dnsmasq.conf <<'EOF'
@@ -91,7 +118,7 @@ EOF
 touch /etc/dnsmasq.hosts
 
 # Configure nginx
-cat > /etc/nginx/http.d/geno.conf <<'EOF'
+cat > /etc/nginx/sites-available/geno.conf <<'EOF'
 server {
     listen 80;
     server_name _;
@@ -111,6 +138,9 @@ server {
     }
 }
 EOF
+
+ln -sf /etc/nginx/sites-available/geno.conf /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
 
 # Copy answer file template to geno directory
 cat > /etc/geno/answer.toml.tpl <<'EOFTEMPLATE'
@@ -309,35 +339,32 @@ EOFPYTHON
 
 chmod +x /srv/geno/app.py
 
-# Create systemd-style init scripts for OpenRC (Alpine)
+# Start services
 
 # dnsmasq service
-rc-update add dnsmasq default
-rc-service dnsmasq restart
+systemctl restart dnsmasq || true
 
 # nginx service
-rc-update add nginx default
-rc-service nginx restart
+systemctl restart nginx || true
 
-# Create init script for geno app
-cat > /etc/init.d/geno-app <<'EOFINIT'
-#!/sbin/openrc-run
+# Create systemd service for geno app
+cat > /etc/systemd/system/geno-app.service <<'EOF'
+[Unit]
+Description=Geno App
+After=network.target nginx.service dnsmasq.service
 
-name="geno-app"
-command="/usr/bin/python3"
-command_args="/srv/geno/app.py"
-command_background="yes"
-pidfile="/var/run/geno-app.pid"
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /srv/geno/app.py
+Restart=on-failure
 
-depend() {
-    need net
-    after nginx dnsmasq
-}
-EOFINIT
+[Install]
+WantedBy=multi-user.target
+EOF
 
-chmod +x /etc/init.d/geno-app
-rc-update add geno-app default
-rc-service geno-app start
+systemctl daemon-reload
+systemctl enable geno-app
+systemctl start geno-app
 
 echo "=== Geno Provisioning Server Setup Complete ==="
 echo "Services running:"
