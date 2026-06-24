@@ -31,5 +31,7 @@ jobs:
         uses: 1Password/install-cli-action@v4
 
       - name: Run Terraform Plan
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
         run:
           op run --env-file .env.tpl -- terraform plan
