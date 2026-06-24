@@ -34,6 +34,9 @@ jobs:
       - name: Initialize Terraform
         run: terraform init
 
+      - name: Check Terraform format
+        run: terraform fmt -check
+
       - name: Run Terraform Plan
         id: plan
         env:
