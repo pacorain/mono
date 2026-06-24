@@ -1,12 +1,13 @@
-name: Lab Connect Test
+name: Lab Plan
 
 on:
-  pull_request:
+  push:
     branches: [ "main" ]
     paths: [ "terraform/lab/**"]
 
 jobs:
-  test_connect:
+  apply:
+    name: terraform apply
     runs-on: ubuntu-latest
     environment: production
     defaults:
@@ -15,10 +16,21 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+      - name: Setup AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-east-1
+          role-to-assume: ${{ vars.PLAN_ROLE_ARN }}
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.15
+      - name: Setup 1Password CLI
+        uses: 1Password/install-cli-action@v4
+      
       - name: Connect to Tailnet
         uses: tailscale/github-action@v4
         with:
@@ -26,20 +38,13 @@ jobs:
           audience: ${{ secrets.TS_AUDIENCE }}
           tags: tag:ci
           ping: ${{ vars.TAILNET_PING }}
-      - name: Setup 1Password CLI
-        uses: 1Password/install-cli-action@v4
 
-      - name: Check connectivity
+      - name: Initialize Terraform
+        run: terraform init
+
+      - name: Run Terraform Apply
+        id: apply
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
         run: |
-          PROXMOX_ENDPOINT=$(op read op://Homelab/proxmox-prod/endpoint)
-          PROXMOX_CREDENTIAL=$(op read op://Homelab/proxmox-prod/credential)
-          echo "::add-mask::${PROXMOX_ENDPOINT}"
-          echo "::add-mask::${PROXMOX_CREDENTIAL}"
-
-          curl --fail --show-error -k \
-            -H "Authorization: PVEAPIToken=${PROXMOX_CREDENTIAL}" \
-            "${PROXMOX_ENDPOINT%/}/api2/json/access/permissions"
-
-          
+          op run --env-file .env.tpl -- terraform apply -auto-approve
