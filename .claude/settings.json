@@ -1,0 +1,10 @@
+{
+    "permissions": {
+        "deny": [
+            "Read(**/secrets.auto.tfvars)"
+        ],
+        "allow": [
+            "Read(**/secrets.auto.tfvars.tpl)"
+        ]
+    }
+}
