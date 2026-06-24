@@ -1,0 +1,28 @@
+name: Lab Connect Test
+
+on:
+  pull_request:
+    branches: [ "main" ]
+    paths: [ "terraform/lab/**"]
+
+jobs:
+  test_connect:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: terraform/lab
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Connect to Tailnet
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_OAUTH_AUDIENCE }}
+          tags: tag:ci
+          ping: ${{ vars.TAILNET_PING }}
