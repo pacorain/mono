@@ -43,7 +43,7 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
         run: |
           op run --env-file .env.tpl -- \
-            terraform plan -no-color -input=false 2>&1 | tee plan.txt
+            terraform plan -destroy -no-color -input=false 2>&1 | tee plan.txt
         continue-on-error: true
 
       - name: Comment Plan on PR

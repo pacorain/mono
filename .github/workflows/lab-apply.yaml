@@ -47,4 +47,4 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
         run: |
-          op run --env-file .env.tpl -- terraform apply -auto-approve
+          op run --env-file .env.tpl -- terraform apply -destroy -auto-approve
