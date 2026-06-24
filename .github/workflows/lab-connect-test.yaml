@@ -36,7 +36,7 @@ jobs:
           export PROXMOX_ENDPOINT=$(op read op://Homelab/proxmox-prod/endpoint)
           export PROXMOX_CREDENTIAL=$(op read op://Homelab/proxmox-prod/credential)
 
-          curl --fail --silent --show-error -k \
+          curl --fail -v --show-error -k \
             -H "Authorization: PVEAPIToken=${PROXMOX_CREDENTIAL}" \
             "${PROXMOX_ENDPOINT%/}/api2/json/access/permissions"
 
