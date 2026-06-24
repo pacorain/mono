@@ -33,10 +33,12 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
         run: |
-          export PROXMOX_ENDPOINT=$(op read op://Homelab/proxmox-prod/endpoint)
-          export PROXMOX_CREDENTIAL=$(op read op://Homelab/proxmox-prod/credential)
+          PROXMOX_ENDPOINT=$(op read op://Homelab/proxmox-prod/endpoint)
+          PROXMOX_CREDENTIAL=$(op read op://Homelab/proxmox-prod/credential)
+          echo "::add-mask::${PROXMOX_ENDPOINT}"
+          echo "::add-mask::${PROXMOX_CREDENTIAL}"
 
-          curl --fail -v --show-error -k \
+          curl --fail --show-error -k \
             -H "Authorization: PVEAPIToken=${PROXMOX_CREDENTIAL}" \
             "${PROXMOX_ENDPOINT%/}/api2/json/access/permissions"
 
