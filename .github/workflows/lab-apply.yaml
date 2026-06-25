@@ -23,7 +23,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: us-east-1
-          role-to-assume: ${{ vars.PLAN_ROLE_ARN }}
+          role-to-assume: ${{ vars.APPLY_ROLE_ARN }}
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v4
         with:
@@ -40,6 +40,8 @@ jobs:
           ping: ${{ vars.TAILNET_PING }}
 
       - name: Initialize Terraform
+        env:
+          TF_CLI_ARGS_init: -backend-config=bucket=${{ secrets.TERRAFORM_STATE_BUCKET }} -backend-config=key=lab/terraform.tfstate -backend-config=region=us-east-1
         run: terraform init
 
       - name: Run Terraform Apply
