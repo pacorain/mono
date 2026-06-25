@@ -23,7 +23,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: us-east-1
-          role-to-assume: ${{ vars.PLAN_ROLE_ARN }}
+          role-to-assume: ${{ vars.APPLY_ROLE_ARN }}
       - name: Install Terraform
         uses: hashicorp/setup-terraform@v4
         with:
