@@ -49,6 +49,7 @@ jobs:
             plan \
             -no-color \
             -input=false \
+            -refresh=false \
             2>&1 | tee plan.txt
         continue-on-error: true
 
