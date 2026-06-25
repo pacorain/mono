@@ -12,6 +12,11 @@ terraform {
   }
 
   required_version = ">= 1.15"
+
+  backend "s3" {
+    key    = "lab/terraform.tfstate"
+    region = "us-east-1"
+  }
 }
 
 provider "proxmox" {
