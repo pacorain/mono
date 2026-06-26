@@ -34,17 +34,11 @@ resource "proxmox_virtual_environment_container" "luigi" {
   }
 
   operating_system {
-    template_file_id = proxmox_download_file.alpine_template.id
+    # TODO: Make this an imported resource
+    template_file_id = "rainbow_road/local:vztmpl/alpine-3.22-default_20250617_amd64.tar.xz"
     type             = "alpine"
   }
 
-}
-
-resource "proxmox_download_file" "alpine_template" {
-  content_type = "vztmpl"
-  datastore_id = "local"
-  node_name    = "rainbow-road"
-  url          = "https://dl-cdn.alpinelinux.org/alpine/v3.22/releases/x86_64/alpine-3.22-default_20250617_amd64.tar.xz" # Will be managed by import for now
 }
 
 resource "onepassword_item" "luigi_root_password" {
