@@ -35,7 +35,7 @@ resource "proxmox_virtual_environment_container" "luigi" {
 
   operating_system {
     # TODO: Make this an imported resource
-    template_file_id = "rainbow_road/local:vztmpl/alpine-3.22-default_20250617_amd64.tar.xz"
+    template_file_id = "local:vztmpl/alpine-3.22-default_20250617_amd64.tar.xz"
     type             = "alpine"
   }
 
