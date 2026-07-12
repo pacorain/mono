@@ -33,6 +33,11 @@ resource "proxmox_virtual_environment_container" "luigi" {
     cores = 1
   }
 
+  memory {
+    dedicated = 512
+    swap      = 256
+  }
+
   operating_system {
     # TODO: Make this an imported resource
     template_file_id = "local:vztmpl/alpine-3.22-default_20250617_amd64.tar.xz"
