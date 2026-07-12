@@ -4,5 +4,5 @@ data "onepassword_item" "services_ssh" {
 }
 
 locals {
-  services_ssh_key = data.onepassword_item.services_ssh.public_key
+  services_ssh_key = sensitive(data.onepassword_item.services_ssh.public_key)
 }
