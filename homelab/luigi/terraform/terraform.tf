@@ -26,5 +26,5 @@ provider "proxmox" {
 provider "onepassword" {} # Use environment variable
 
 locals {
-  pool = "proxmox"
+  pool = "terraform"
 }
