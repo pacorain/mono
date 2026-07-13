@@ -60,6 +60,21 @@ data "aws_iam_policy_document" "plan_permissions" {
       "${aws_s3_bucket.terraform_state.arn}/*"
     ]
   }
+
+  # The luigi config manages the node's read-only S3 credential
+  # (homelab/luigi/terraform/aws.tf); plan needs to refresh it
+  statement {
+    sid = "LuigiDnsReaderIamRead"
+    actions = [
+      "iam:GetUser",
+      "iam:GetUserPolicy",
+      "iam:ListUserPolicies",
+      "iam:ListAttachedUserPolicies",
+      "iam:ListGroupsForUser",
+      "iam:ListAccessKeys",
+    ]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/luigi-dns-reader"]
+  }
 }
 
 resource "aws_iam_role_policy" "plan" {
@@ -110,6 +125,30 @@ data "aws_iam_policy_document" "apply_permissions" {
       aws_s3_bucket.terraform_state.arn,
       "${aws_s3_bucket.terraform_state.arn}/*",
     ]
+  }
+
+  # The luigi config manages the node's read-only S3 credential
+  # (homelab/luigi/terraform/aws.tf)
+  statement {
+    sid = "LuigiDnsReaderIamManage"
+    actions = [
+      "iam:CreateUser",
+      "iam:DeleteUser",
+      "iam:GetUser",
+      "iam:TagUser",
+      "iam:UntagUser",
+      "iam:PutUserPolicy",
+      "iam:DeleteUserPolicy",
+      "iam:GetUserPolicy",
+      "iam:ListUserPolicies",
+      "iam:ListAttachedUserPolicies",
+      "iam:ListGroupsForUser",
+      "iam:CreateAccessKey",
+      "iam:DeleteAccessKey",
+      "iam:UpdateAccessKey",
+      "iam:ListAccessKeys",
+    ]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/luigi-dns-reader"]
   }
 }
 

@@ -4,3 +4,6 @@
 
 # State bucket
 bucket_name = "{{ op://Homelab/tf-state-bucket/password }}"
+
+# CI artifacts bucket (luigi DNS config)
+artifacts_bucket_name = "{{ op://Homelab/luigi-dns-artifacts-bucket/password }}"

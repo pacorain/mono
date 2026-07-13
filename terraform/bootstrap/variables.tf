@@ -3,6 +3,11 @@ variable "bucket_name" {
   sensitive = true
 }
 
+variable "artifacts_bucket_name" {
+  type      = string
+  sensitive = true
+}
+
 variable "github_repo" {
   type        = string
   description = "owner/repo allowed to assume the GitHub Actions role, e.g. pacorain/mono"

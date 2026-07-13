@@ -1,0 +1,116 @@
+#!/bin/sh
+# Sync dnsmasq config on luigi from the S3 artifacts bucket.
+#
+# Reads the `latest` pointer object, and if it references a build we haven't
+# deployed yet: downloads it, verifies its checksum, validates it with
+# `dnsmasq --test`, atomically swaps /etc/dnsmasq.d, and restarts dnsmasq.
+# Keeps the previous config as /etc/dnsmasq.d.last-good and rolls back if the
+# new config fails validation or the post-restart self-check.
+#
+# Triggered by the webhook listener (CI publish), an hourly cron fallback,
+# and once at bootstrap. Safe to run concurrently (flock) and repeatedly
+# (no-op when already up to date).
+set -eu
+
+ENV_FILE=/etc/luigi-dns/aws.env
+STATE_DIR=/var/lib/luigi-dns
+LIVE_DIR=/etc/dnsmasq.d
+LAST_GOOD_DIR=/etc/dnsmasq.d.last-good
+
+log() {
+  echo "$*"
+  logger -t luigi-dns-sync "$*" 2>/dev/null || true
+}
+
+fail() {
+  log "ERROR: $*"
+  exit 1
+}
+
+[ -r "$ENV_FILE" ] || fail "missing $ENV_FILE"
+# Provides AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, S3_BUCKET,
+# S3_PREFIX, SELF_CHECK_NAME
+# shellcheck source=/dev/null
+. "$ENV_FILE"
+
+mkdir -p "$STATE_DIR"
+
+# Single instance at a time; a concurrent webhook + cron pair is a no-op.
+exec 9>/run/luigi-dns-sync.lock
+flock -n 9 || exit 0
+
+s3get() { # <key> <output-file>
+  curl -fsS --max-time 120 \
+    --aws-sigv4 "aws:amz:${AWS_REGION}:s3" \
+    --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
+    -o "$2" \
+    "https://${S3_BUCKET}.s3.${AWS_REGION}.amazonaws.com/$1"
+}
+
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+s3get "$S3_PREFIX/latest" "$WORK_DIR/latest" || fail "could not fetch $S3_PREFIX/latest"
+
+ARTIFACT_PATH=$(sed -n 's/^path=//p' "$WORK_DIR/latest")
+ARTIFACT_SHA256=$(sed -n 's/^sha256=//p' "$WORK_DIR/latest")
+if [ -z "$ARTIFACT_PATH" ] || [ -z "$ARTIFACT_SHA256" ]; then
+  fail "latest pointer is malformed"
+fi
+
+# Only ever deploy from the trusted prefix; the pointer is data, not authority.
+case "$ARTIFACT_PATH" in
+  *..*) fail "artifact path contains '..': $ARTIFACT_PATH" ;;
+  "$S3_PREFIX/builds/"*.tar.gz) ;;
+  *) fail "artifact path outside trusted prefix: $ARTIFACT_PATH" ;;
+esac
+
+if [ -f "$STATE_DIR/state" ] && grep -qx "sha256=$ARTIFACT_SHA256" "$STATE_DIR/state"; then
+  exit 0 # already deployed
+fi
+
+log "deploying $ARTIFACT_PATH"
+s3get "$ARTIFACT_PATH" "$WORK_DIR/dns-config.tar.gz" || fail "could not fetch $ARTIFACT_PATH"
+echo "$ARTIFACT_SHA256  $WORK_DIR/dns-config.tar.gz" | sha256sum -c >/dev/null 2>&1 \
+  || fail "checksum mismatch for $ARTIFACT_PATH"
+
+mkdir "$WORK_DIR/staging"
+tar -xzf "$WORK_DIR/dns-config.tar.gz" -C "$WORK_DIR/staging" || fail "could not extract artifact"
+[ -d "$WORK_DIR/staging/dnsmasq.d" ] || fail "artifact does not contain dnsmasq.d/"
+
+dnsmasq --test --conf-file=/dev/null --conf-dir="$WORK_DIR/staging/dnsmasq.d,*.conf" \
+  || fail "dnsmasq --test rejected the new config; keeping current config"
+
+rm -rf "$LAST_GOOD_DIR"
+if [ -d "$LIVE_DIR" ]; then
+  mv "$LIVE_DIR" "$LAST_GOOD_DIR"
+fi
+mv "$WORK_DIR/staging/dnsmasq.d" "$LIVE_DIR"
+
+# Restart rather than SIGHUP: HUP does not reload local=/conf-file directives.
+self_check() {
+  rc-service dnsmasq restart || return 1
+  for _ in 1 2 3; do
+    nslookup "$SELF_CHECK_NAME" 127.0.0.1 >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  return 1
+}
+
+if ! self_check; then
+  log "new config failed self-check (lookup of $SELF_CHECK_NAME); rolling back"
+  if [ -d "$LAST_GOOD_DIR" ]; then
+    rm -rf "$LIVE_DIR"
+    mv "$LAST_GOOD_DIR" "$LIVE_DIR"
+    rc-service dnsmasq restart || true
+  fi
+  fail "rollback complete; still on previous config"
+fi
+
+{
+  echo "path=$ARTIFACT_PATH"
+  echo "sha256=$ARTIFACT_SHA256"
+  cat "$LIVE_DIR/VERSION" 2>/dev/null || true
+} > "$STATE_DIR/state"
+
+log "deployed $(grep '^git_sha=' "$STATE_DIR/state" | head -1 || true): $ARTIFACT_PATH"

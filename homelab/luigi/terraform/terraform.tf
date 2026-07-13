@@ -9,6 +9,11 @@ terraform {
       source  = "1password/onepassword"
       version = "~> 3.3.1"
     }
+
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.92"
+    }
   }
 
   required_version = ">= 1.15"
@@ -24,6 +29,10 @@ provider "proxmox" {
 }
 
 provider "onepassword" {} # Use environment variable
+
+provider "aws" {
+  region = "us-east-1"
+}
 
 locals {
   pool = "terraform"

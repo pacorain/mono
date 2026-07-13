@@ -1,0 +1,6 @@
+# Public blocklists bundled into the DNS config at build time.
+# Format (whitespace-separated): <name> <format> <url>
+#   name:   used in the generated filename (50-blocklist-<name>.conf)
+#   format: "dnsmasq" (local=/domain/ lines, shipped verbatim after sanity checks)
+#           or "hosts" (0.0.0.0 <domain> lines, shipped via addn-hosts)
+hagezi dnsmasq https://raw.githubusercontent.com/hagezi/dns-blocklists/main/dnsmasq/light.txt
