@@ -3,10 +3,10 @@ name: Luigi
 on:
   pull_request:
     branches: [ "main" ]
-    paths: [ "homelab/luigi/" ]
+    paths: [ "homelab/luigi/**/*" ]
   push:
     branches: [ "main" ]
-    paths: [ "homelab/luigi/" ]
+    paths: [ "homelab/luigi/**/*" ]
 
 jobs:
   plan:
@@ -169,6 +169,7 @@ jobs:
   write_dns:
     name: Write DNS config
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
