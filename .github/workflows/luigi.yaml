@@ -3,10 +3,10 @@ name: Luigi
 on:
   pull_request:
     branches: [ "main" ]
-    paths: [ "homelab/luigi/terraform/**" ]
+    paths: [ "homelab/luigi/" ]
   push:
     branches: [ "main" ]
-    paths: [ "homelab/luigi/terraform/**" ]
+    paths: [ "homelab/luigi/" ]
 
 jobs:
   plan:
@@ -165,3 +165,23 @@ jobs:
           op run --env-file .env.tpl -- \
             terraform apply \
             luigi.tfplan
+
+  write_dns:
+    name: Write DNS config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Connect to Tailnet
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:ci
+          ping: ${{ vars.TAILNET_PING }}
+      - name: Write DNS config
+        run: |
+          echo "Writing DNS config..."
+          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            homelab/luigi/dnsmasq.d/* \
+            root@10.11.0.67:/etc/dnsmasq.d/
