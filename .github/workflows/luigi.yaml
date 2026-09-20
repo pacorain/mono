@@ -185,3 +185,8 @@ jobs:
           scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
             homelab/luigi/dnsmasq.d/* \
             root@10.11.0.67:/etc/dnsmasq.d/
+      - name: Restart dnsmasq
+        run: |
+          echo "Restarting dnsmasq..."
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            root@10.11.0.67 "systemctl restart dnsmasq"
