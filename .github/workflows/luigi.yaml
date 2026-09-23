@@ -170,6 +170,9 @@ jobs:
     name: Write DNS config
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
