@@ -50,6 +50,7 @@ jobs:
             -no-color \
             -input=false \
             -refresh=false \
+            -lock=false \
             2>&1 | tee plan.txt
         continue-on-error: true
 

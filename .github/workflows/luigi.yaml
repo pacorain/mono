@@ -58,6 +58,7 @@ jobs:
             -no-color \
             -input=false \
             -refresh=false \
+            -lock=false \
             -out=luigi.tfplan \
             2>&1 | tee plan.txt
         continue-on-error: true
@@ -166,13 +167,54 @@ jobs:
             terraform apply \
             luigi.tfplan
 
-  write_dns:
-    name: Write DNS config
+  check_dns:
+    name: Check DNS config
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+      - name: Install dnsmasq
+        run: sudo apt-get update -q && sudo apt-get install -y -q dnsmasq-base
+      - name: Test dnsmasq config
+        # Same include rule as luigi: only *.conf files are read as config.
+        run: dnsmasq --test --conf-file=/dev/null --conf-dir=homelab/luigi/dnsmasq.d,*.conf
+
+  write_dns:
+    name: Write DNS config
+    needs: [apply, check_dns]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup 1Password CLI
+        uses: 1Password/install-cli-action@v4
+      - name: Load deploy key
+        # Private half of the services SSH key that Terraform authorizes for
+        # root on luigi (see ../homelab/luigi/terraform/one_password.tf).
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          LUIGI_KNOWN_HOSTS: ${{ vars.LUIGI_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$LUIGI_KNOWN_HOSTS" ]; then
+            echo "::error::Set the LUIGI_KNOWN_HOSTS repo variable (see homelab/luigi/README.md)"
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          ( umask 077
+            op read "op://yu7fihprz6dmby76gpkpsh7rdy/32vl6nu353ofade3fr3d7cre5e/private key?ssh-format=openssh" > ~/.ssh/luigi )
+          printf '%s\n' "$LUIGI_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<'EOF'
+          Host luigi
+            HostName 10.11.0.67
+            User root
+            IdentityFile ~/.ssh/luigi
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          EOF
       - name: Connect to Tailnet
         uses: tailscale/github-action@v4
         with:
@@ -180,14 +222,19 @@ jobs:
           audience: ${{ secrets.TS_AUDIENCE }}
           tags: tag:ci
           ping: ${{ vars.TAILNET_PING }}
+      - name: Back up current config
+        run: ssh luigi 'rm -rf /etc/dnsmasq.d.prev && cp -a /etc/dnsmasq.d /etc/dnsmasq.d.prev'
       - name: Write DNS config
+        run: scp homelab/luigi/dnsmasq.d/* luigi:/etc/dnsmasq.d/
+      - name: Test and restart dnsmasq
+        # Luigi runs Alpine, which uses OpenRC rather than systemd.
+        # A config that fails `dnsmasq --test` is rolled back before restart.
         run: |
-          echo "Writing DNS config..."
-          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            homelab/luigi/dnsmasq.d/* \
-            root@10.11.0.67:/etc/dnsmasq.d/
-      - name: Restart dnsmasq
-        run: |
-          echo "Restarting dnsmasq..."
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            root@10.11.0.67 "systemctl restart dnsmasq"
+          ssh luigi '
+            if dnsmasq --test; then
+              rc-service dnsmasq restart
+            else
+              rm -rf /etc/dnsmasq.d && mv /etc/dnsmasq.d.prev /etc/dnsmasq.d
+              echo "dnsmasq --test failed; previous config restored" >&2
+              exit 1
+            fi'
