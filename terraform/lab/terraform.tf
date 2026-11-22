@@ -16,6 +16,11 @@ terraform {
   backend "s3" {
     key    = "lab/terraform.tfstate"
     region = "us-east-1"
+
+    # S3-native state locking (writes a .tflock object next to the state).
+    # CI plan jobs run with -lock=false because the plan role is read-only;
+    # apply takes the lock.
+    use_lockfile = true
   }
 }
 
