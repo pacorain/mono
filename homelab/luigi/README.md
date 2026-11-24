@@ -70,3 +70,23 @@ the container is recreated, since it gets a new host key.
 dig @10.11.0.67 luigi.lab.rwhq.net   # 10.11.0.67
 dig @10.11.0.67 example.com          # run twice: second answer ~0 ms (cached)
 ```
+
+After a reboot or power loss, `check-boot.sh` checks the whole chain from a
+machine on the tailnet: both lookups above, and on luigi that dnsmasq and
+sshd are running and in the default runlevel (so they start on boot).
+
+```sh
+./homelab/luigi/check-boot.sh
+```
+
+The same check runs from GitHub with the `Luigi boot check` workflow
+(Actions → Luigi boot check → Run workflow). It only reads; it changes
+nothing on luigi.
+
+Two things outside this repo also have to be right for luigi to come back
+after a power cut:
+
+- rainbow-road powers itself back on (BIOS: restore on AC power loss →
+  power on).
+- luigi's container is set to start on boot (`pct config <vmid> | grep
+  onboot` on rainbow-road should show `onboot: 1`; Terraform sets this).

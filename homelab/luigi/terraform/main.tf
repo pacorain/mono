@@ -6,6 +6,11 @@ resource "proxmox_virtual_environment_container" "luigi" {
 
   unprivileged = true
 
+  # Both are the provider's defaults; set here so it's plain that luigi
+  # is meant to come back on its own when rainbow-road boots.
+  started       = true
+  start_on_boot = true
+
   initialization {
     hostname = "luigi"
     ip_config {

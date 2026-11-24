@@ -1,0 +1,51 @@
+name: Luigi boot check
+
+# Run by hand after a reboot or power loss. Read-only: it looks up names
+# against luigi and checks service state over SSH, and changes nothing.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Check luigi came back
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Install dig
+        run: command -v dig || (sudo apt-get update -q && sudo apt-get install -y -q dnsutils)
+      - name: Setup 1Password CLI
+        uses: 1Password/install-cli-action@v4
+      - name: Load deploy key
+        # Same key and host pin as the deploy job in luigi.yaml.
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          LUIGI_KNOWN_HOSTS: ${{ vars.LUIGI_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$LUIGI_KNOWN_HOSTS" ]; then
+            echo "::error::Set the LUIGI_KNOWN_HOSTS repo variable (see homelab/luigi/README.md)"
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          ( umask 077
+            op read "op://yu7fihprz6dmby76gpkpsh7rdy/32vl6nu353ofade3fr3d7cre5e/private key?ssh-format=openssh" > ~/.ssh/luigi )
+          printf '%s\n' "$LUIGI_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<'CONF'
+          Host luigi
+            HostName 10.11.0.67
+            User root
+            IdentityFile ~/.ssh/luigi
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          CONF
+      - name: Connect to Tailnet
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:ci
+          ping: ${{ vars.TAILNET_PING }}
+      - name: Check luigi
+        run: ./homelab/luigi/check-boot.sh luigi

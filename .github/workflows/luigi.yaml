@@ -229,9 +229,12 @@ jobs:
       - name: Test and restart dnsmasq
         # Luigi runs Alpine, which uses OpenRC rather than systemd.
         # A config that fails `dnsmasq --test` is rolled back before restart.
+        # dnsmasq is also kept in the default runlevel so it comes back on
+        # its own after a reboot or power loss, not only after a deploy.
         run: |
           ssh luigi '
             if dnsmasq --test; then
+              rc-update show default | grep -qw dnsmasq || rc-update add dnsmasq default
               rc-service dnsmasq restart
             else
               rm -rf /etc/dnsmasq.d && mv /etc/dnsmasq.d.prev /etc/dnsmasq.d
